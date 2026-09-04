@@ -91,6 +91,10 @@ dfirtable security.csv --hl "4625=bad" --hl "4624=ok" --hl "psexec=bad" --open
 
 The HTML template uses `__PLACEHOLDER__` + `str.replace()` rather than `%`-formatting or `.format()` — embedded CSS and JS collide with both (`%}` reads as a format specifier, `{}` as a replacement field). Learned that the hard way.
 
+### License
+
+MIT — see [LICENSE](LICENSE). Use it, fork it, ship it in your own toolkit.
+
 ---
 
 *First used on HTB Sherlock "Baggage" (shellbags analysis). Writeup: https://9t0wl.github.io/Blue-Team-Portfolio/*
