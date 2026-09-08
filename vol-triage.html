@@ -375,6 +375,9 @@ function setActive(id){ state.active = id; render(); }
 
 function renderPanel(){
   if(!state.active){ document.getElementById("panel").innerHTML = ""; return; }
+  const active = document.activeElement;
+  const restoreFocus = active && active.classList && active.classList.contains("search")
+    ? { start: active.selectionStart, end: active.selectionEnd } : null;
   const tab = state.tabs.find(t=>t.id===state.active);
   const rows = applyFilterSort(tab);
   const toolbarBits = [];
@@ -405,6 +408,10 @@ function renderPanel(){
     body = `<div class="table-wrap"><table class="data">${thead}${tbody}</table></div>`;
   }
   document.getElementById("panel").innerHTML = `<div class="toolbar">${toolbarBits.join("")}</div>${body}`;
+  if(restoreFocus){
+    const input = document.querySelector("#panel .search");
+    if(input){ input.focus(); input.setSelectionRange(restoreFocus.start, restoreFocus.end); }
+  }
 }
 
 function onFilter(id, val){ state.tabs.find(t=>t.id===id).filter = val; renderPanel(); }
