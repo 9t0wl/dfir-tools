@@ -38,6 +38,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-body);}
 .header h1{font-family:var(--font-display);font-weight:800;text-transform:uppercase;letter-spacing:.03em;
   font-size:clamp(1.6rem,1.25rem+1.4vw,2.3rem);margin:0;text-wrap:balance;line-height:1;}
 .header .sub{color:var(--text-dim);font-size:.82rem;margin-top:6px;font-family:var(--font-mono);}
+.casebar{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--font-mono);font-size:.76rem;color:var(--text-dim);margin-top:10px;}
+.casebar b{color:var(--text);font-weight:600;}
 .header{margin-bottom:20px;}
 .getting-started{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 22px;
   box-shadow:0 1px 2px var(--shadow);margin-bottom:20px;}
@@ -107,6 +109,7 @@ table.data tr.jumped{animation:pulse 1.6s ease-out 1;}
   <div class="header">
     <h1>Volatility 3 Triage</h1>
     <div class="sub">Load vol3 -r csv output — sortable, filterable, PID-linked. Runs entirely in your browser; nothing loaded here leaves the page.</div>
+    <div id="casebar"></div>
   </div>
 
   <div id="getting-started"></div>
@@ -155,6 +158,7 @@ function makeNetworkFlagger(tab){
 function detectKind(header){
   const h = header.map(x=>x.toLowerCase());
   const find = re => header[h.findIndex(x=>re.test(x))];
+  if(header.length===2 && /^variable$/.test(h[0]) && /^value$/.test(h[1])) return {kind:"info"};
   const foreignKey = find(/^foreignaddr$/) || find(/^foreign/);
   const stateKey = find(/^state$/);
   const pidKey = find(/^pid$/);
@@ -164,8 +168,48 @@ function detectKind(header){
   return {kind:"generic", pidKey};
 }
 
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+const OS_NAME_BY_BUILDLAB = [
+  [/win7/i, "Windows 7"], [/win8sp1|win81/i, "Windows 8.1"], [/win8/i, "Windows 8"],
+  [/win10/i, "Windows 10"], [/win2016|win2k16/i, "Windows Server 2016"],
+  [/win2012r2/i, "Windows Server 2012 R2"], [/win2012/i, "Windows Server 2012"],
+  [/win2008r2/i, "Windows Server 2008 R2"], [/vista/i, "Windows Vista"], [/winxp/i, "Windows XP"],
+];
+const OS_NAME_BY_VERSION = {"5.1":"Windows XP","5.2":"Windows Server 2003","6.0":"Windows Vista",
+  "6.1":"Windows 7 / Server 2008 R2","6.2":"Windows 8 / Server 2012","6.3":"Windows 8.1 / Server 2012 R2","10.0":"Windows 10/11 / Server"};
+
+function deriveCaseInfo(map){
+  const buildLab = map["NTBuildLab"] || map["NtBuildLab"] || "";
+  const match = OS_NAME_BY_BUILDLAB.find(([re]) => re.test(buildLab));
+  const maj = map["NtMajorVersion"], min = map["NtMinorVersion"];
+  let osName = match ? match[1] : (OS_NAME_BY_VERSION[maj+"."+min] || ("NT "+maj+"."+min));
+  const csd = map["CSDVersion"];
+  const sp = csd && csd !== "0" ? " SP"+csd : "";
+  const arch = /^true$/i.test(map["Is64Bit"]||"") ? "x64" : (map["Is64Bit"] ? "x86" : "");
+  const buildNum = buildLab.split(".").slice(0,2).join(".");
+  const os = [osName+sp, arch, buildNum ? "("+buildNum+")" : ""].filter(Boolean).join(" ");
+
+  let captured = map["SystemTime"] || "";
+  captured = captured.replace(/\.\d+/, "").replace(/\+00:00$/, "").trim();
+  if(captured) captured += " UTC";
+
+  return { os: os || "Unknown", captured: captured || "Unknown", kernelBase: map["Kernel Base"] || "-" };
+}
+
+function renderCasebar(){
+  const el = document.getElementById("casebar");
+  if(!state.caseInfo){ el.innerHTML = ""; return; }
+  const c = state.caseInfo;
+  el.innerHTML = `<div class="casebar">
+    <div>OS <b>${escapeHtml(c.os)}</b></div>
+    <div>CAPTURED <b>${escapeHtml(c.captured)}</b></div>
+    <div>KERNEL BASE <b>${escapeHtml(c.kernelBase)}</b></div>
+  </div>`;
+}
+
 let uploadSeq = 1;
-const state = { active: null, tabs: [] };
+const state = { active: null, tabs: [], caseInfo: null };
 
 function jumpToPID(pid){
   const target = state.tabs.find(t=>t.kind==="process");
@@ -221,7 +265,7 @@ function renderGettingStarted(){
     <div class="getting-started">
       <h2>Start here</h2>
       <p>Export a plugin as CSV, then load it below with <b>+ Add data</b>. Columns named <code>PID</code>, <code>ForeignAddr</code> and <code>State</code> are auto-detected — process and network tabs get PID cross-referencing and noise/external toggles for free; anything else still gets sortable, filterable, flagged tables.</p>
-      <pre>vol -f memdump.raw windows.info                    # confirm the profile parses
+      <pre>vol -f memdump.raw -r csv windows.info     &gt; info.csv      # load this one first — fills in the case bar above
 vol -f memdump.raw -r csv windows.pstree   &gt; pstree.csv
 vol -f memdump.raw -r csv windows.cmdline  &gt; cmdline.csv
 vol -f memdump.raw -r csv windows.netscan  &gt; netscan.csv</pre>
@@ -300,6 +344,11 @@ function addTabFromCSV(name, text){
     return o;
   });
   const info = detectKind(header);
+  if(info.kind==="info"){
+    const map = {};
+    rows.forEach(r=>{ map[r[header[0]]] = r[header[1]]; });
+    state.caseInfo = deriveCaseInfo(map);
+  }
   const cols = header.map(h=>({key:h, label:h, pid: h===info.pidKey, wrap:true}));
   const id = "t"+(uploadSeq++);
   const tab = {id, label:name, kind: info.kind, cols, rows, filter:"", sort:null,
@@ -371,7 +420,7 @@ function renderLegend(){
     </div>` : "";
 }
 
-function render(){ renderGettingStarted(); renderTabbar(); renderPanel(); renderLegend(); }
+function render(){ renderCasebar(); renderGettingStarted(); renderTabbar(); renderPanel(); renderLegend(); }
 render();
 </script>
 </body>
