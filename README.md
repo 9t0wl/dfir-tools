@@ -136,10 +136,35 @@ Any other plugin works the same way (`windows.malfind`, `windows.filescan`, `win
 
 Built the same way `dfirtable.py` was — real case output first, generic tool second. Column detection is header-name based (case-insensitive `PID`, `ForeignAddr`, `State`, `ImageFileName`/`Process`), so it should hold up across most `windows.*` plugins without edits; a CSV that matches neither shape still loads as a plain sortable/filterable table with keyword flagging.
 
+---
+
+## `strings2csv.py`
+
+Wraps `strings` (both ASCII and UTF-16LE passes) into a CSV so its output can be loaded into `vol-triage.html` like any other export, instead of living in scrollback.
+
+### Why
+
+Some vol3 plugins hard-code which Windows versions they know how to parse. `windows.consoles` / `windows.cmdscan` (console screen/input buffer recovery — the plugins that would normally catch a pasted command) raise `NotImplementedError` on anything they don't recognize, Windows 7 (NT 6.1 / build 7601) included. The fallback is the same data the plugin would have parsed, recovered by hand: dump the owning process (`conhost.exe` holds the console buffer, not the shell itself) and grep its memory in both encodings, since Windows stores most of this text as UTF-16LE and a plain ASCII-only pass silently misses it.
+
+### Usage
+
+```bash
+vol -f memdump.raw windows.memmap --dump --pid <conhost-pid>
+python3 strings2csv.py pid.<pid>.dmp --pid <pid> > out.csv
+
+# or pre-filter to the interesting stuff, same as grep -iE by hand
+python3 strings2csv.py pid.<pid>.dmp --pid <pid> \
+  --pattern 'iex|invoke-expression|frombase64|alias|-enc' > out.csv
+```
+
+Columns: `PID, Encoding, Offset, String` — `Encoding` is `ASCII` or `UTF16LE` so you can tell which pass a hit came from. Load the CSV into `vol-triage.html` via **+ Add data**; it has no `ImageFileName`/`ForeignAddr` columns so it loads as a plain sortable/filterable table with keyword flagging, and its `PID` column still cross-references into any process tab you've already loaded.
+
+Python 3, standard library only, shells out to `strings` (binutils — already on Kali).
+
 ### License
 
 MIT — see [LICENSE](LICENSE). Use it, fork it, ship it in your own toolkit.
 
 ---
 
-*`dfirtable.py` first used on HTB Sherlock "Baggage" (shellbags analysis). `vol-triage.html` first used on HTB Sherlock "Recollection" (Windows 7 memory dump). Writeups: https://9t0wl.github.io/Blue-Team-Portfolio/*
+*`dfirtable.py` first used on HTB Sherlock "Baggage" (shellbags analysis). `vol-triage.html` and `strings2csv.py` first used on HTB Sherlock "Recollection" (Windows 7 memory dump). Writeups: https://9t0wl.github.io/Blue-Team-Portfolio/*
