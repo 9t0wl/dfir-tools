@@ -2,5 +2,6 @@ __pycache__/
 *.pyc
 *.html
 !docs/*.html
+!vol-triage.html
 .venv/
 .DS_Store

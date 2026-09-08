@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Volatility 3 Triage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#eef1f6; --surface:#ffffff; --surface-2:#e7ecf3; --border:#ccd4e0;
+  --text:#161b24; --text-dim:#5a6473;
+  --accent:#35519e; --accent-soft:#e4e9f7;
+  --crit:#b93d31; --crit-soft:#fbe4e1;
+  --warn:#94661b; --warn-soft:#f6ecd6;
+  --ok:#22735f; --ok-soft:#e1f1ec;
+  --shadow:rgba(20,30,50,0.10);
+  --font-display:'Big Shoulders Display','Arial Narrow',sans-serif;
+  --font-body:'IBM Plex Sans',-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'IBM Plex Mono','Cascadia Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12161d; --surface:#1b212a; --surface-2:#222a35; --border:#2e3644;
+    --text:#e7ebf3; --text-dim:#8b96a8;
+    --accent:#8ea4ff; --accent-soft:#232a42;
+    --crit:#ff6f63; --crit-soft:#3a2020;
+    --warn:#e8bd63; --warn-soft:#3a301a;
+    --ok:#63cbb0; --ok-soft:#17332c;
+    --shadow:rgba(0,0,0,0.45);
+  }
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);}
+.app{max-width:1180px;margin:0 auto;padding:28px 20px 60px;}
+.header h1{font-family:var(--font-display);font-weight:800;text-transform:uppercase;letter-spacing:.03em;
+  font-size:clamp(1.6rem,1.25rem+1.4vw,2.3rem);margin:0;text-wrap:balance;line-height:1;}
+.header .sub{color:var(--text-dim);font-size:.82rem;margin-top:6px;font-family:var(--font-mono);}
+.header{margin-bottom:20px;}
+.getting-started{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 22px;
+  box-shadow:0 1px 2px var(--shadow);margin-bottom:20px;}
+.getting-started h2{font-size:.95rem;margin:0 0 4px;font-family:var(--font-body);font-weight:600;}
+.getting-started p{color:var(--text-dim);font-size:.8rem;margin:0 0 12px;line-height:1.5;}
+.getting-started pre{background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:12px 14px;
+  font-family:var(--font-mono);font-size:.78rem;overflow-x:auto;margin:0 0 10px;line-height:1.6;}
+.tabbar{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.tab{font-family:var(--font-body);font-weight:500;font-size:.85rem;padding:9px 14px;background:none;border:none;
+  border-bottom:2px solid transparent;color:var(--text-dim);cursor:pointer;display:flex;align-items:center;gap:6px;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600;}
+.tab .x{opacity:.6;padding:0 2px;border-radius:3px;}
+.tab .x:hover{opacity:1;background:var(--surface-2);}
+.tab-add{margin-left:auto;font-family:var(--font-body);font-size:.8rem;font-weight:500;color:var(--accent);
+  background:var(--accent-soft);border:1px solid transparent;border-radius:6px;padding:7px 12px;cursor:pointer;}
+.tab-add:hover{filter:brightness(1.05);}
+.addpanel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;
+  box-shadow:0 2px 8px var(--shadow);}
+.addpanel h3{margin:0 0 4px;font-size:.85rem;font-family:var(--font-body);}
+.addpanel p{margin:0 0 10px;color:var(--text-dim);font-size:.78rem;}
+.addpanel .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.addpanel textarea{width:100%;min-height:90px;font-family:var(--font-mono);font-size:.76rem;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;resize:vertical;}
+.btn{font-family:var(--font-body);font-size:.8rem;font-weight:500;padding:7px 13px;border-radius:6px;
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text);cursor:pointer;}
+.btn:hover{border-color:var(--accent);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface);}
+.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.search{flex:1;min-width:180px;font-family:var(--font-mono);font-size:.82rem;padding:8px 10px;border-radius:6px;
+  border:1px solid var(--border);background:var(--surface);color:var(--text);}
+.search:focus-visible,.btn:focus-visible,.tab:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+.toggle{display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text-dim);cursor:pointer;white-space:nowrap;}
+.toggle input{accent-color:var(--accent);}
+.count{font-size:.76rem;color:var(--text-dim);font-family:var(--font-mono);white-space:nowrap;}
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface);}
+table.data{border-collapse:collapse;width:100%;font-family:var(--font-mono);font-size:.79rem;}
+table.data th{position:sticky;top:0;background:var(--surface-2);text-align:left;padding:8px 10px;font-family:var(--font-body);
+  font-weight:600;font-size:.72rem;letter-spacing:.03em;text-transform:uppercase;color:var(--text-dim);cursor:pointer;
+  white-space:nowrap;border-bottom:1px solid var(--border);user-select:none;}
+table.data th:hover{color:var(--text);}
+table.data th .arrow{opacity:.5;margin-left:3px;}
+table.data td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top;white-space:nowrap;}
+table.data td.wrap{white-space:normal;max-width:520px;}
+table.data tr:last-child td{border-bottom:none;}
+table.data tr.flag-crit{background:var(--crit-soft);}
+table.data tr.flag-warn{background:var(--warn-soft);}
+table.data tr.jumped{animation:pulse 1.6s ease-out 1;}
+@media (prefers-reduced-motion: reduce){ table.data tr.jumped{animation:none;outline:2px solid var(--accent);} }
+@keyframes pulse{0%{outline:2px solid var(--accent);}100%{outline:2px solid transparent;}}
+.chip{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-body);font-size:.68rem;font-weight:600;
+  letter-spacing:.02em;text-transform:uppercase;padding:2px 7px;border-radius:20px;white-space:nowrap;}
+.chip.crit{background:var(--crit);color:#fff;}
+.chip.warn{background:var(--warn);color:#fff;}
+.pidbtn{font-family:var(--font-mono);font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;
+  padding:0;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;}
+.pidbtn:hover{color:var(--text);}
+.empty{padding:30px;text-align:center;color:var(--text-dim);font-size:.85rem;}
+.note{font-size:.74rem;color:var(--text-dim);margin-top:10px;line-height:1.5;}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:.72rem;color:var(--text-dim);}
+.legend span{display:inline-flex;align-items:center;gap:5px;}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Volatility 3 Triage</h1>
+    <div class="sub">Load vol3 -r csv output — sortable, filterable, PID-linked. Runs entirely in your browser; nothing loaded here leaves the page.</div>
+  </div>
+
+  <div id="getting-started"></div>
+  <div class="tabbar" id="tabbar"></div>
+  <div id="addpanel"></div>
+  <div id="panel"></div>
+  <div id="legend"></div>
+</div>
+
+<script>
+const NOISE = new Set(["svchost.exe","msedge.exe","chrome.exe","dwm.exe","SearchIndexer.exe","sppsvc.exe","spoolsv.exe",
+  "wmpnetwk.exe","lsm.exe","csrss.exe","smss.exe","wininit.exe","winlogon.exe","taskhost.exe","taskhostw.exe"]);
+
+const CRIT_KW = ["confidential","\\public\\","secret","mshta","regsvr32","certutil","bitsadmin","wscript.exe","cscript.exe",
+  "-enc ","-encodedcommand","invoke-expression","downloadstring","frombase64string","\\temp\\"];
+const WARN_KW = ["powershell.exe","cmd.exe","taskeng.exe","wuauclt.exe","rundll32.exe"];
+
+function rowText(row){ return Object.values(row).join(" ").toLowerCase(); }
+
+function flagProcess(row){
+  const t = rowText(row);
+  for(const k of CRIT_KW) if(t.includes(k)) return {level:"crit", reason:'Matches high-risk indicator "'+k.trim()+'"'};
+  for(const k of WARN_KW) if(t.includes(k)) return {level:"warn", reason:"Common living-off-the-land binary — review parent/child and args"};
+  return null;
+}
+function isRoutable(ip){
+  if(!ip) return false;
+  return !["0.0.0.0","::","*","127.0.0.1","::1",""].includes(ip) && !ip.startsWith("169.254") && !ip.startsWith("fe80");
+}
+function makeNetworkFlagger(tab){
+  const foreignCounts = {};
+  tab.rows.forEach(r=>{
+    const fa = r[tab.foreignKey];
+    const st = r[tab.stateKey];
+    if(isRoutable(fa) && st!=="LISTENING"){ foreignCounts[fa] = (foreignCounts[fa]||0)+1; }
+  });
+  return function(row){
+    const fa = row[tab.foreignKey], st = row[tab.stateKey];
+    if(!isRoutable(fa) || st==="LISTENING") return null;
+    const c = foreignCounts[fa]||0;
+    if(c>=2) return {level:"crit", reason:"Repeat connections to "+fa+" across "+c+" sockets — possible C2 beacon"};
+    return {level:"warn", reason:"External connection to "+fa};
+  };
+}
+
+function detectKind(header){
+  const h = header.map(x=>x.toLowerCase());
+  const find = re => header[h.findIndex(x=>re.test(x))];
+  const foreignKey = find(/^foreignaddr$/) || find(/^foreign/);
+  const stateKey = find(/^state$/);
+  const pidKey = find(/^pid$/);
+  const nameKey = find(/^imagefilename$/) || find(/^process$/) || find(/^name$/);
+  if(foreignKey && stateKey) return {kind:"network", foreignKey, stateKey, pidKey};
+  if(pidKey && (nameKey || find(/^args$/) || find(/^cmd$/) || find(/^path$/))) return {kind:"process", pidKey, nameKey};
+  return {kind:"generic", pidKey};
+}
+
+let uploadSeq = 1;
+const state = { active: null, tabs: [] };
+
+function jumpToPID(pid){
+  const target = state.tabs.find(t=>t.kind==="process");
+  if(!target) return;
+  target.filter = String(pid);
+  state.active = target.id;
+  render();
+  requestAnimationFrame(()=>{
+    const el = document.querySelector('tr[data-pid="'+CSS.escape(String(pid))+'"]');
+    if(el){ el.classList.add("jumped"); el.scrollIntoView({block:"center", behavior:"smooth"}); }
+  });
+}
+
+function cell(col, row){
+  let v = row[col.key];
+  if(col.pid && v!=null && v!==""){
+    return '<button class="pidbtn" onclick="jumpToPID(\''+String(v).replace(/'/g,"\\'")+'\')">'+v+'</button>';
+  }
+  if(v==null || v==="") v = "-";
+  v = String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  return v;
+}
+
+function applyFilterSort(tab){
+  let rows = tab.rows.slice();
+  if(tab.kind==="process" && tab.nameKey && tab.hideNoiseActive!==false){
+    rows = rows.filter(r=>!NOISE.has(r[tab.nameKey]));
+  }
+  if(tab.kind==="network" && tab.externalOnlyActive!==false){
+    rows = rows.filter(r=>isRoutable(r[tab.foreignKey]) && r[tab.stateKey]!=="LISTENING");
+  }
+  if(tab.filter){
+    const f = tab.filter.toLowerCase();
+    rows = rows.filter(r=>rowText(r).includes(f));
+  }
+  if(tab.sort){
+    const {key,dir} = tab.sort;
+    rows.sort((a,b)=>{
+      let av=a[key], bv=b[key];
+      const an = Number(av), bn = Number(bv);
+      if(av!=="" && bv!=="" && !isNaN(an) && !isNaN(bn)) return dir*(an-bn);
+      av = (av==null?"":String(av)).toLowerCase(); bv = (bv==null?"":String(bv)).toLowerCase();
+      return dir*av.localeCompare(bv);
+    });
+  }
+  return rows;
+}
+
+function renderGettingStarted(){
+  const el = document.getElementById("getting-started");
+  if(state.tabs.length){ el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <div class="getting-started">
+      <h2>Start here</h2>
+      <p>Export a plugin as CSV, then load it below with <b>+ Add data</b>. Columns named <code>PID</code>, <code>ForeignAddr</code> and <code>State</code> are auto-detected — process and network tabs get PID cross-referencing and noise/external toggles for free; anything else still gets sortable, filterable, flagged tables.</p>
+      <pre>vol -f memdump.raw windows.info                    # confirm the profile parses
+vol -f memdump.raw -r csv windows.pstree   &gt; pstree.csv
+vol -f memdump.raw -r csv windows.cmdline  &gt; cmdline.csv
+vol -f memdump.raw -r csv windows.netscan  &gt; netscan.csv</pre>
+      <p style="margin-bottom:0">Any other plugin works the same way — <code>windows.malfind</code>, <code>windows.filescan</code>, <code>windows.registry.printkey</code>, etc. — just export with <code>-r csv</code> and load it as another tab.</p>
+    </div>`;
+}
+
+function renderTabbar(){
+  const bar = document.getElementById("tabbar");
+  bar.innerHTML = state.tabs.map(t=>
+    `<button class="tab ${t.id===state.active?'active':''}" onclick="setActive('${t.id}')">${t.label}
+      <span class="x" onclick="event.stopPropagation();closeTab('${t.id}')">&times;</span>
+    </button>`
+  ).join("") + `<button class="tab-add" onclick="toggleAddPanel()">+ Add data</button>`;
+}
+
+function toggleAddPanel(){
+  const el = document.getElementById("addpanel");
+  el.innerHTML = el.innerHTML ? "" : `
+    <div class="addpanel">
+      <h3>Load a Volatility3 CSV</h3>
+      <p>Run <code>vol -f &lt;dump&gt; -r csv &lt;plugin&gt; &gt; out.csv</code>, then choose the file — or paste its contents below. Parsed entirely in your browser.</p>
+      <div class="row">
+        <input type="file" id="fileInput" accept=".csv,text/csv" />
+        <span class="count">or paste CSV text:</span>
+      </div>
+      <textarea id="pasteArea" placeholder="PID,ImageFileName,CreateTime&#10;123,evil.exe,2026-01-01 00:00:00"></textarea>
+      <div class="row" style="margin-top:8px;">
+        <button class="btn primary" onclick="parsePaste()">Parse pasted text</button>
+      </div>
+    </div>`;
+  const fi = document.getElementById("fileInput");
+  if(fi){
+    fi.addEventListener("change", e=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => addTabFromCSV(file.name.replace(/\.csv$/i,""), ev.target.result);
+      reader.readAsText(file);
+    });
+  }
+}
+function parsePaste(){
+  const txt = document.getElementById("pasteArea").value;
+  if(!txt.trim()) return;
+  addTabFromCSV("Pasted data "+uploadSeq, txt);
+}
+
+function parseCSV(text){
+  const rows = []; let row = [], field = "", inQ = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQ){
+      if(c === '"'){ if(text[i+1] === '"'){ field+='"'; i++; } else inQ = false; }
+      else field += c;
+    } else {
+      if(c === '"') inQ = true;
+      else if(c === ','){ row.push(field); field=""; }
+      else if(c === "\n" || c === "\r"){
+        if(c === "\r" && text[i+1]==="\n") i++;
+        row.push(field); rows.push(row); row=[]; field="";
+      } else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r=>!(r.length===1 && r[0]===""));
+}
+
+function addTabFromCSV(name, text){
+  const parsed = parseCSV(text);
+  if(parsed.length<2){ alert("No data rows found in that CSV."); return; }
+  const header = parsed[0].map(h=>h.trim());
+  const rows = parsed.slice(1).map(r=>{
+    const o = {};
+    header.forEach((h,i)=>{ o[h] = r[i] ?? ""; });
+    return o;
+  });
+  const info = detectKind(header);
+  const cols = header.map(h=>({key:h, label:h, pid: h===info.pidKey, wrap:true}));
+  const id = "t"+(uploadSeq++);
+  const tab = {id, label:name, kind: info.kind, cols, rows, filter:"", sort:null,
+    pidKey: info.pidKey, nameKey: info.nameKey, foreignKey: info.foreignKey, stateKey: info.stateKey};
+  if(tab.kind==="network") tab.flagFn = makeNetworkFlagger(tab);
+  else if(tab.kind==="process") tab.flagFn = flagProcess;
+  else tab.flagFn = flagProcess;
+  state.tabs.push(tab);
+  state.active = id;
+  document.getElementById("addpanel").innerHTML = "";
+  render();
+}
+function closeTab(id){
+  state.tabs = state.tabs.filter(t=>t.id!==id);
+  if(state.active===id) state.active = state.tabs.length ? state.tabs[0].id : null;
+  render();
+}
+function setActive(id){ state.active = id; render(); }
+
+function renderPanel(){
+  if(!state.active){ document.getElementById("panel").innerHTML = ""; return; }
+  const tab = state.tabs.find(t=>t.id===state.active);
+  const rows = applyFilterSort(tab);
+  const toolbarBits = [];
+  toolbarBits.push(`<input class="search" placeholder="Filter ${tab.label.toLowerCase()}…" value="${tab.filter.replace(/"/g,'&quot;')}" oninput="onFilter('${tab.id}', this.value)">`);
+  if(tab.kind==="process" && tab.nameKey){
+    toolbarBits.push(`<label class="toggle"><input type="checkbox" ${tab.hideNoiseActive!==false?'checked':''} onchange="onToggle('${tab.id}','hideNoiseActive',this.checked)"> Hide common system noise</label>`);
+  }
+  if(tab.kind==="network"){
+    toolbarBits.push(`<label class="toggle"><input type="checkbox" ${tab.externalOnlyActive!==false?'checked':''} onchange="onToggle('${tab.id}','externalOnlyActive',this.checked)"> External / non-listening only</label>`);
+  }
+  toolbarBits.push(`<span class="count">${rows.length} of ${tab.rows.length} rows</span>`);
+
+  let body;
+  if(rows.length===0){
+    body = `<div class="empty">No rows match this filter.</div>`;
+  } else {
+    const arrow = key => tab.sort && tab.sort.key===key ? (tab.sort.dir===1?'▲':'▼') : '';
+    const thead = `<tr><th style="width:26px"></th>` + tab.cols.map(c=>
+      `<th onclick="onSort('${tab.id}','${c.key}')">${c.label} <span class="arrow">${arrow(c.key)}</span></th>`
+    ).join("") + `</tr>`;
+    const tbody = rows.map(r=>{
+      const flag = tab.flagFn ? tab.flagFn(r) : null;
+      const cls = flag ? "flag-"+flag.level : "";
+      const chip = flag ? `<span class="chip ${flag.level}" title="${flag.reason.replace(/"/g,'&quot;')}">${flag.level==='crit'?'Critical':'Review'}</span>` : "";
+      const pidAttr = tab.pidKey && r[tab.pidKey]!=null ? ` data-pid="${String(r[tab.pidKey]).replace(/"/g,'&quot;')}"` : "";
+      return `<tr class="${cls}"${pidAttr}><td>${chip}</td>` + tab.cols.map(c=>`<td class="${c.wrap?'wrap':''}">${cell(c,r)}</td>`).join("") + `</tr>`;
+    }).join("");
+    body = `<div class="table-wrap"><table class="data">${thead}${tbody}</table></div>`;
+  }
+  document.getElementById("panel").innerHTML = `<div class="toolbar">${toolbarBits.join("")}</div>${body}`;
+}
+
+function onFilter(id, val){ state.tabs.find(t=>t.id===id).filter = val; renderPanel(); }
+function onToggle(id, key, val){ const t = state.tabs.find(t=>t.id===id); t[key] = val; renderPanel(); }
+function onSort(id, key){
+  const t = state.tabs.find(t=>t.id===id);
+  if(t.sort && t.sort.key===key) t.sort.dir *= -1;
+  else t.sort = {key, dir:1};
+  renderPanel();
+}
+
+function renderLegend(){
+  document.getElementById("legend").innerHTML = state.tabs.length ? `
+    <div class="legend">
+      <span><i class="dot" style="background:var(--crit)"></i> Critical — matches a high-risk indicator</span>
+      <span><i class="dot" style="background:var(--warn)"></i> Review — living-off-the-land binary or external endpoint</span>
+      <span>Click any <b style="color:var(--accent)">PID</b> to jump to the process tab</span>
+    </div>` : "";
+}
+
+function render(){ renderGettingStarted(); renderTabbar(); renderPanel(); renderLegend(); }
+render();
+</script>
+</body>
+</html>

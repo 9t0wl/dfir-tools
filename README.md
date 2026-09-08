@@ -91,10 +91,55 @@ dfirtable security.csv --hl "4625=bad" --hl "4624=ok" --hl "psexec=bad" --open
 
 The HTML template uses `__PLACEHOLDER__` + `str.replace()` rather than `%`-formatting or `.format()` — embedded CSS and JS collide with both (`%}` reads as a format specifier, `{}` as a replacement field). Learned that the hard way.
 
+---
+
+## `vol-triage.html`
+
+A single-file, no-build browser tool for reading **Volatility3 CSV output**. Same problem `dfirtable.py` solves — wide delimited tool output that fights the terminal — but as a live page instead of a generated report, since a memory-dump investigation usually means loading several plugin outputs side by side and pivoting between them by PID as you go, not generating one static file per question.
+
+### Why not just `dfirtable.py` for this too?
+
+`dfirtable.py` is still the right tool for a one-shot merged timeline (shellbags across users, MFT + AmCache correlation). `vol-triage.html` is for the interactive, in-progress phase of a memory investigation: multiple plugin outputs open at once, click a PID in `netscan` and jump straight to its row in `pstree`, toggle off `svchost`/browser noise without re-running a command. Reach for whichever shape fits the moment — they're not mutually exclusive.
+
+### Install
+
+No build step. Open the file directly in a browser, or serve it locally:
+
+```bash
+git clone https://github.com/9t0wl/dfir-tools.git ~/tools/dfir-tools
+xdg-open ~/tools/dfir-tools/vol-triage.html   # or just double-click it
+```
+
+Pure HTML/CSS/JS, no dependencies, nothing loaded into it leaves the browser — safe to point at a live case.
+
+### Usage
+
+Export whatever plugins you need as CSV, then load each file from the page's **+ Add data** button (file picker or paste):
+
+```bash
+vol -f memdump.raw windows.info                    # confirm the profile parses first
+vol -f memdump.raw -r csv windows.pstree   > pstree.csv
+vol -f memdump.raw -r csv windows.cmdline  > cmdline.csv
+vol -f memdump.raw -r csv windows.netscan  > netscan.csv
+```
+
+Any other plugin works the same way (`windows.malfind`, `windows.filescan`, `windows.registry.printkey`, …) — export with `-r csv`, load it as another tab.
+
+### Features
+
+- **Auto-detects table shape** from the CSV header — a `PID` + `ImageFileName`/`Args` column set gets treated as a process table (noise-hide toggle, PID buttons); `ForeignAddr` + `State` gets treated as a network table (external-only toggle, repeat-IP beacon detection)
+- **Click any PID to jump** to its row in the process tab, from anywhere else it appears (network, another plugin's output)
+- **Auto-flags rows** — a small keyword/IP heuristic marks living-off-the-land binaries (`powershell.exe`, `cmd.exe`, `rundll32.exe`, …) for review and known-bad indicators (encoded PowerShell, `Public`/`Secret`/`Temp` paths) as critical; a repeated `ForeignAddr` across multiple non-listening sockets gets flagged as a possible beacon
+- **Sort, filter, multi-tab** — every column is click-sortable, every tab has its own live text filter, tabs are closable so you can drop a plugin's output once you're done with it
+
+### Notes
+
+Built the same way `dfirtable.py` was — real case output first, generic tool second. Column detection is header-name based (case-insensitive `PID`, `ForeignAddr`, `State`, `ImageFileName`/`Process`), so it should hold up across most `windows.*` plugins without edits; a CSV that matches neither shape still loads as a plain sortable/filterable table with keyword flagging.
+
 ### License
 
 MIT — see [LICENSE](LICENSE). Use it, fork it, ship it in your own toolkit.
 
 ---
 
-*First used on HTB Sherlock "Baggage" (shellbags analysis). Writeup: https://9t0wl.github.io/Blue-Team-Portfolio/*
+*`dfirtable.py` first used on HTB Sherlock "Baggage" (shellbags analysis). `vol-triage.html` first used on HTB Sherlock "Recollection" (Windows 7 memory dump). Writeups: https://9t0wl.github.io/Blue-Team-Portfolio/*
