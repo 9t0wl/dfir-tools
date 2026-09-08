@@ -206,14 +206,25 @@ function deriveCaseInfo(map){
   return { os: os || "Unknown", captured: captured || "Unknown", kernelBase: map["Kernel Base"] || "-" };
 }
 
-// windows.registry.printkey CSV: a row with Name=="ComputerName" holds the hostname
-// when the key printed was .../Control/ComputerName/ComputerName. Column names here
-// are best-effort from vol3's plugin source, not yet verified against real -r csv
-// output in this repo the way windows.info was -- if it doesn't pick up, check the
-// actual header your vol3 version emits and adjust the /^name$/ / /^data$/ matches.
+// windows.registry.printkey CSV: printkey re-scans EVERY loaded hive for the given
+// relative key path, so most rows are placeholder misses (Name/Data == "-") from
+// hives that don't have that key -- only the hive that actually holds it carries
+// real values. Column shape (TreeDepth, Last Write Time, Hive Offset, Type, Key,
+// Name, Data, Volatile) confirmed against real vol3 2.28.0 output.
 function deriveHostname(rows, nameCol, dataCol){
   const row = rows.find(r => (r[nameCol]||"").toLowerCase() === "computername");
   return row ? row[dataCol] : null;
+}
+
+// SAM's .../Domains/Account/Users/Names key has one subkey per local account
+// (Name = username, Data == "-" since it's a key not a value) -- the standard way
+// to enumerate every defined account regardless of whether it ever logged on.
+// "(Default)" is registry boilerplate present on every key, not an account.
+function deriveUserAccounts(rows, nameCol, keyCol){
+  return rows
+    .filter(r => (r[keyCol]||"").toLowerCase().endsWith("\\users\\names"))
+    .filter(r => r[nameCol] !== "-" && r[nameCol] !== "(Default)")
+    .map(r => r[nameCol]);
 }
 
 function renderCasebar(){
@@ -224,6 +235,7 @@ function renderCasebar(){
     c.os ? `<div>OS <b>${escapeHtml(c.os)}</b></div>` : "",
     c.captured ? `<div>CAPTURED <b>${escapeHtml(c.captured)}</b></div>` : "",
     c.kernelBase ? `<div>KERNEL BASE <b>${escapeHtml(c.kernelBase)}</b></div>` : "",
+    c.userAccounts ? `<div title="${escapeHtml(c.userAccounts.join(", "))}">USERS <b>${c.userAccounts.length}</b></div>` : "",
   ].filter(Boolean);
   el.innerHTML = facts.length ? `<div class="casebar">${facts.join("")}</div>` : "";
 }
@@ -260,6 +272,9 @@ function applyFilterSort(tab){
   }
   if(tab.kind==="network" && tab.externalOnlyActive!==false){
     rows = rows.filter(r=>isRoutable(r[tab.foreignKey]) && r[tab.stateKey]!=="LISTENING");
+  }
+  if(tab.kind==="registry" && tab.hideNoiseActive!==false){
+    rows = rows.filter(r=>r[tab.regNameKey] !== "-");
   }
   if(tab.flaggedOnlyActive && tab.flagFn){
     rows = rows.filter(r=>tab.flagFn(r));
@@ -376,11 +391,14 @@ function addTabFromCSV(name, text){
   if(info.kind==="registry"){
     const hostname = deriveHostname(rows, info.nameCol, info.dataCol);
     if(hostname) state.caseInfo.hostname = hostname;
+    const users = deriveUserAccounts(rows, info.nameCol, info.keyCol);
+    if(users.length) state.caseInfo.userAccounts = users;
   }
   const cols = header.map(h=>({key:h, label:h, pid: h===info.pidKey, wrap:true}));
   const id = "t"+(uploadSeq++);
   const tab = {id, label:name, kind: info.kind, cols, rows, filter:"", sort:null,
-    pidKey: info.pidKey, nameKey: info.nameKey, foreignKey: info.foreignKey, stateKey: info.stateKey};
+    pidKey: info.pidKey, nameKey: info.nameKey, foreignKey: info.foreignKey, stateKey: info.stateKey,
+    regNameKey: info.nameCol};
   if(tab.kind==="network") tab.flagFn = makeNetworkFlagger(tab);
   else if(tab.kind==="process") tab.flagFn = flagProcess;
   else tab.flagFn = flagProcess;
@@ -410,6 +428,9 @@ function renderPanel(){
   }
   if(tab.kind==="network"){
     toolbarBits.push(`<label class="toggle"><input type="checkbox" ${tab.externalOnlyActive!==false?'checked':''} onchange="onToggle('${tab.id}','externalOnlyActive',this.checked)"> External / non-listening only</label>`);
+  }
+  if(tab.kind==="registry"){
+    toolbarBits.push(`<label class="toggle"><input type="checkbox" ${tab.hideNoiseActive!==false?'checked':''} onchange="onToggle('${tab.id}','hideNoiseActive',this.checked)"> Hide hive-scan misses</label>`);
   }
   if(tab.flagFn){
     toolbarBits.push(`<label class="toggle"><input type="checkbox" ${tab.flaggedOnlyActive?'checked':''} onchange="onToggle('${tab.id}','flaggedOnlyActive',this.checked)"> Critical/Review only</label>`);
