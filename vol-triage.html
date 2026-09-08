@@ -158,7 +158,12 @@ function makeNetworkFlagger(tab){
 function detectKind(header){
   const h = header.map(x=>x.toLowerCase());
   const find = re => header[h.findIndex(x=>re.test(x))];
-  if(header.length===2 && /^variable$/.test(h[0]) && /^value$/.test(h[1])) return {kind:"info"};
+  // vol3's CSV renderer prepends a TreeDepth column to every plugin's output, flat
+  // or not (always 0 outside windows.pstree) -- so this can't require an exact
+  // column count, only that Variable/Value are present among whatever else is there.
+  const variableKey = find(/^variable$/);
+  const valueKey = find(/^value$/);
+  if(variableKey && valueKey) return {kind:"info", variableKey, valueKey};
   const foreignKey = find(/^foreignaddr$/) || find(/^foreign/);
   const stateKey = find(/^state$/);
   const pidKey = find(/^pid$/);
@@ -346,7 +351,7 @@ function addTabFromCSV(name, text){
   const info = detectKind(header);
   if(info.kind==="info"){
     const map = {};
-    rows.forEach(r=>{ map[r[header[0]]] = r[header[1]]; });
+    rows.forEach(r=>{ map[r[info.variableKey]] = r[info.valueKey]; });
     state.caseInfo = deriveCaseInfo(map);
   }
   const cols = header.map(h=>({key:h, label:h, pid: h===info.pidKey, wrap:true}));
