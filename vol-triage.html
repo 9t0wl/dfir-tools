@@ -246,6 +246,9 @@ function applyFilterSort(tab){
   if(tab.kind==="network" && tab.externalOnlyActive!==false){
     rows = rows.filter(r=>isRoutable(r[tab.foreignKey]) && r[tab.stateKey]!=="LISTENING");
   }
+  if(tab.flaggedOnlyActive && tab.flagFn){
+    rows = rows.filter(r=>tab.flagFn(r));
+  }
   if(tab.filter){
     const f = tab.filter.toLowerCase();
     rows = rows.filter(r=>rowText(r).includes(f));
@@ -387,6 +390,9 @@ function renderPanel(){
   }
   if(tab.kind==="network"){
     toolbarBits.push(`<label class="toggle"><input type="checkbox" ${tab.externalOnlyActive!==false?'checked':''} onchange="onToggle('${tab.id}','externalOnlyActive',this.checked)"> External / non-listening only</label>`);
+  }
+  if(tab.flagFn){
+    toolbarBits.push(`<label class="toggle"><input type="checkbox" ${tab.flaggedOnlyActive?'checked':''} onchange="onToggle('${tab.id}','flaggedOnlyActive',this.checked)"> Critical/Review only</label>`);
   }
   toolbarBits.push(`<span class="count">${rows.length} of ${tab.rows.length} rows</span>`);
 
