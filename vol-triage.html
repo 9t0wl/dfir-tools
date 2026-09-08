@@ -164,6 +164,10 @@ function detectKind(header){
   const variableKey = find(/^variable$/);
   const valueKey = find(/^value$/);
   if(variableKey && valueKey) return {kind:"info", variableKey, valueKey};
+  const nameCol = find(/^name$/);
+  const dataCol = find(/^data$/);
+  const keyCol = find(/^key$/);
+  if(nameCol && dataCol && keyCol) return {kind:"registry", nameCol, dataCol, keyCol};
   const foreignKey = find(/^foreignaddr$/) || find(/^foreign/);
   const stateKey = find(/^state$/);
   const pidKey = find(/^pid$/);
@@ -202,19 +206,30 @@ function deriveCaseInfo(map){
   return { os: os || "Unknown", captured: captured || "Unknown", kernelBase: map["Kernel Base"] || "-" };
 }
 
+// windows.registry.printkey CSV: a row with Name=="ComputerName" holds the hostname
+// when the key printed was .../Control/ComputerName/ComputerName. Column names here
+// are best-effort from vol3's plugin source, not yet verified against real -r csv
+// output in this repo the way windows.info was -- if it doesn't pick up, check the
+// actual header your vol3 version emits and adjust the /^name$/ / /^data$/ matches.
+function deriveHostname(rows, nameCol, dataCol){
+  const row = rows.find(r => (r[nameCol]||"").toLowerCase() === "computername");
+  return row ? row[dataCol] : null;
+}
+
 function renderCasebar(){
   const el = document.getElementById("casebar");
-  if(!state.caseInfo){ el.innerHTML = ""; return; }
   const c = state.caseInfo;
-  el.innerHTML = `<div class="casebar">
-    <div>OS <b>${escapeHtml(c.os)}</b></div>
-    <div>CAPTURED <b>${escapeHtml(c.captured)}</b></div>
-    <div>KERNEL BASE <b>${escapeHtml(c.kernelBase)}</b></div>
-  </div>`;
+  const facts = [
+    c.hostname ? `<div>HOSTNAME <b>${escapeHtml(c.hostname)}</b></div>` : "",
+    c.os ? `<div>OS <b>${escapeHtml(c.os)}</b></div>` : "",
+    c.captured ? `<div>CAPTURED <b>${escapeHtml(c.captured)}</b></div>` : "",
+    c.kernelBase ? `<div>KERNEL BASE <b>${escapeHtml(c.kernelBase)}</b></div>` : "",
+  ].filter(Boolean);
+  el.innerHTML = facts.length ? `<div class="casebar">${facts.join("")}</div>` : "";
 }
 
 let uploadSeq = 1;
-const state = { active: null, tabs: [], caseInfo: null };
+const state = { active: null, tabs: [], caseInfo: {} };
 
 function jumpToPID(pid){
   const target = state.tabs.find(t=>t.kind==="process");
@@ -277,7 +292,8 @@ function renderGettingStarted(){
 vol -f memdump.raw -r csv windows.pstree   &gt; pstree.csv
 vol -f memdump.raw -r csv windows.cmdline  &gt; cmdline.csv
 vol -f memdump.raw -r csv windows.netscan  &gt; netscan.csv</pre>
-      <p style="margin-bottom:0">Any other plugin works the same way — <code>windows.malfind</code>, <code>windows.filescan</code>, <code>windows.registry.printkey</code>, etc. — just export with <code>-r csv</code> and load it as another tab.</p>
+      <p>Any other plugin works the same way — <code>windows.malfind</code>, <code>windows.filescan</code>, etc. — just export with <code>-r csv</code> and load it as another tab.</p>
+      <p style="margin-bottom:0"><code>windows.registry.printkey --key '...\ComputerName\ComputerName'</code>, exported the same way, adds a <b>HOSTNAME</b> fact to the case bar too.</p>
     </div>`;
 }
 
@@ -355,7 +371,11 @@ function addTabFromCSV(name, text){
   if(info.kind==="info"){
     const map = {};
     rows.forEach(r=>{ map[r[info.variableKey]] = r[info.valueKey]; });
-    state.caseInfo = deriveCaseInfo(map);
+    Object.assign(state.caseInfo, deriveCaseInfo(map));
+  }
+  if(info.kind==="registry"){
+    const hostname = deriveHostname(rows, info.nameCol, info.dataCol);
+    if(hostname) state.caseInfo.hostname = hostname;
   }
   const cols = header.map(h=>({key:h, label:h, pid: h===info.pidKey, wrap:true}));
   const id = "t"+(uploadSeq++);
