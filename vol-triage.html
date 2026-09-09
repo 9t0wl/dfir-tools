@@ -305,9 +305,14 @@ function renderGettingStarted(){
       <p>Export a plugin as CSV, then load it below with <b>+ Add data</b>. Columns named <code>PID</code>, <code>ForeignAddr</code> and <code>State</code> are auto-detected — process and network tabs get PID cross-referencing and noise/external toggles for free; anything else still gets sortable, filterable, flagged tables.</p>
       <pre>vol -f memdump.raw -r csv windows.info     &gt; info.csv      # load this one first — fills in the case bar above
 vol -f memdump.raw -r csv windows.pstree   &gt; pstree.csv
+vol -f memdump.raw -r csv windows.pslist   &gt; pslist.csv     # cross-check vs psscan for hidden/unlinked processes
+vol -f memdump.raw -r csv windows.psscan   &gt; psscan.csv     # pool-scans raw memory — finds what pslist/pstree miss
 vol -f memdump.raw -r csv windows.cmdline  &gt; cmdline.csv
-vol -f memdump.raw -r csv windows.netscan  &gt; netscan.csv</pre>
-      <p>Any other plugin works the same way — <code>windows.malfind</code>, <code>windows.filescan</code>, etc. — just export with <code>-r csv</code> and load it as another tab.</p>
+vol -f memdump.raw -r csv windows.netscan  &gt; netscan.csv
+vol -f memdump.raw -r csv windows.malfind  &gt; malfind.csv    # flags injected/hidden code in process memory
+vol -f memdump.raw -r csv windows.dlllist  &gt; dlllist.csv    # unusual DLLs loaded per process
+vol -f memdump.raw -r csv windows.svcscan  &gt; svcscan.csv    # services — common persistence mechanism</pre>
+      <p>Any other plugin works the same way — <code>windows.filescan</code>, <code>windows.handles</code>, <code>windows.hashdump</code>, etc. — just export with <code>-r csv</code> and load it as another tab.</p>
       <p style="margin-bottom:0"><code>windows.registry.printkey --key '...\ComputerName\ComputerName'</code>, exported the same way, adds a <b>HOSTNAME</b> fact to the case bar too.</p>
     </div>`;
 }
