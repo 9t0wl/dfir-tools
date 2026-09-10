@@ -123,17 +123,39 @@ table.data tr.jumped{animation:pulse 1.6s ease-out 1;}
 const NOISE = new Set(["svchost.exe","msedge.exe","chrome.exe","dwm.exe","SearchIndexer.exe","sppsvc.exe","spoolsv.exe",
   "wmpnetwk.exe","lsm.exe","csrss.exe","smss.exe","wininit.exe","winlogon.exe","taskhost.exe","taskhostw.exe"]);
 
+// Binaries that ONLY ever legitimately run from System32 -- unlike msedge.exe/chrome.exe
+// (which install under Program Files), a real copy of any of these has exactly one valid
+// location. Anything claiming this name from elsewhere is masquerading (MITRE T1036.005),
+// found on HTB Sherlock RogueOne (fake svchost.exe launched from a user's Downloads folder).
+const SYSTEM32_ONLY = new Set(["svchost.exe","csrss.exe","lsass.exe","wininit.exe","winlogon.exe","services.exe",
+  "smss.exe","spoolsv.exe","taskhost.exe","taskhostw.exe","dwm.exe","conhost.exe","lsm.exe","sppsvc.exe"]);
+
 const CRIT_KW = ["confidential","\\public\\","secret","mshta","regsvr32","certutil","bitsadmin","wscript.exe","cscript.exe",
   "-enc ","-encodedcommand","invoke-expression","downloadstring","frombase64string","\\temp\\"];
 const WARN_KW = ["powershell.exe","cmd.exe","taskeng.exe","wuauclt.exe","rundll32.exe"];
 
 function rowText(row){ return Object.values(row).join(" ").toLowerCase(); }
 
+function checkMasquerade(row, tab){
+  if(!tab.pathKey || !tab.nameKey) return null;
+  const name = row[tab.nameKey], path = (row[tab.pathKey]||"").toLowerCase();
+  if(!name || !SYSTEM32_ONLY.has(name) || !path) return null;
+  if(!path.includes("\\windows\\system32\\") && !path.includes("\\windows\\syswow64\\")){
+    return {level:"crit", reason:'"'+name+'" running from outside System32 ('+row[tab.pathKey]+') — classic name masquerading, MITRE T1036.005'};
+  }
+  return null;
+}
+
 function flagProcess(row){
   const t = rowText(row);
   for(const k of CRIT_KW) if(t.includes(k)) return {level:"crit", reason:'Matches high-risk indicator "'+k.trim()+'"'};
   for(const k of WARN_KW) if(t.includes(k)) return {level:"warn", reason:"Common living-off-the-land binary — review parent/child and args"};
   return null;
+}
+function makeProcessFlagger(tab){
+  return function(row){
+    return checkMasquerade(row, tab) || flagProcess(row);
+  };
 }
 function isRoutable(ip){
   if(!ip) return false;
@@ -172,8 +194,9 @@ function detectKind(header){
   const stateKey = find(/^state$/);
   const pidKey = find(/^pid$/);
   const nameKey = find(/^imagefilename$/) || find(/^process$/) || find(/^name$/);
+  const pathKey = find(/^path$/);
   if(foreignKey && stateKey) return {kind:"network", foreignKey, stateKey, pidKey};
-  if(pidKey && (nameKey || find(/^args$/) || find(/^cmd$/) || find(/^path$/))) return {kind:"process", pidKey, nameKey};
+  if(pidKey && (nameKey || find(/^args$/) || find(/^cmd$/) || pathKey)) return {kind:"process", pidKey, nameKey, pathKey};
   return {kind:"generic", pidKey};
 }
 
@@ -268,7 +291,10 @@ function cell(col, row){
 function applyFilterSort(tab){
   let rows = tab.rows.slice();
   if(tab.kind==="process" && tab.nameKey && tab.hideNoiseActive!==false){
-    rows = rows.filter(r=>!NOISE.has(r[tab.nameKey]));
+    // A masquerading process (flagged by name+path/parent mismatch) must survive this
+    // filter even though its name is on the noise list -- otherwise the noise-hider
+    // becomes the exact blind spot the masquerade is built to exploit (RogueOne).
+    rows = rows.filter(r=>!NOISE.has(r[tab.nameKey]) || (tab.flagFn && tab.flagFn(r)));
   }
   if(tab.kind==="network" && tab.externalOnlyActive!==false){
     rows = rows.filter(r=>isRoutable(r[tab.foreignKey]) && r[tab.stateKey]!=="LISTENING");
@@ -313,7 +339,8 @@ vol -f memdump.raw -r csv windows.malfind  &gt; malfind.csv    # flags injected/
 vol -f memdump.raw -r csv windows.dlllist  &gt; dlllist.csv    # unusual DLLs loaded per process
 vol -f memdump.raw -r csv windows.svcscan  &gt; svcscan.csv    # services — common persistence mechanism</pre>
       <p>Any other plugin works the same way — <code>windows.filescan</code>, <code>windows.handles</code>, <code>windows.hashdump</code>, etc. — just export with <code>-r csv</code> and load it as another tab.</p>
-      <p style="margin-bottom:0"><code>windows.registry.printkey --key '...\ComputerName\ComputerName'</code>, exported the same way, adds a <b>HOSTNAME</b> fact to the case bar too.</p>
+      <p><code>windows.registry.printkey --key '...\ComputerName\ComputerName'</code>, exported the same way, adds a <b>HOSTNAME</b> fact to the case bar too.</p>
+      <p style="margin-bottom:0">Process tabs with a <code>Path</code> column also get automatic <b>masquerade detection</b>: a process named like a well-known System32-only binary (<code>svchost.exe</code>, <code>lsass.exe</code>, etc.) running from anywhere else is flagged CRITICAL and stays visible even with "Hide common system noise" checked.</p>
     </div>`;
 }
 
@@ -402,10 +429,10 @@ function addTabFromCSV(name, text){
   const cols = header.map(h=>({key:h, label:h, pid: h===info.pidKey, wrap:true}));
   const id = "t"+(uploadSeq++);
   const tab = {id, label:name, kind: info.kind, cols, rows, filter:"", sort:null,
-    pidKey: info.pidKey, nameKey: info.nameKey, foreignKey: info.foreignKey, stateKey: info.stateKey,
+    pidKey: info.pidKey, nameKey: info.nameKey, pathKey: info.pathKey, foreignKey: info.foreignKey, stateKey: info.stateKey,
     regNameKey: info.nameCol};
   if(tab.kind==="network") tab.flagFn = makeNetworkFlagger(tab);
-  else if(tab.kind==="process") tab.flagFn = flagProcess;
+  else if(tab.kind==="process") tab.flagFn = makeProcessFlagger(tab);
   else tab.flagFn = flagProcess;
   state.tabs.push(tab);
   state.active = id;
